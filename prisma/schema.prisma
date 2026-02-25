@@ -1,0 +1,134 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  googleId    String   @unique
+  email       String   @unique
+  displayName String
+  avatar      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  hostedRooms Room[]      @relation("RoomHost")
+  players     Player[]
+}
+
+// A vocabulary tag (e.g., "trái cây", "bộ phận cơ thể", "động vật")
+// Each word pair belongs to exactly one category tag
+model WordCategory {
+  id          String     @id @default(cuid())
+  name        String     @unique // VD: "trái cây", "bộ phận cơ thể"
+  description String?
+  wordPairs   WordPair[]
+}
+
+// Word pairs belong to a single vocabulary category
+model WordPair {
+  id         String       @id @default(cuid())
+  wordA      String       // Civilian's word
+  wordB      String       // Black Hat's word
+  category   WordCategory @relation(fields: [categoryId], references: [id])
+  categoryId String
+  isActive   Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+
+  usedInRounds Round[]
+}
+
+model Room {
+  id        String     @id @default(cuid())
+  code      String     @unique // 6-char join code
+  host      User       @relation("RoomHost", fields: [hostId], references: [id])
+  hostId    String
+  status    RoomStatus @default(WAITING)
+  maxPlayers Int       @default(8)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  players Player[]
+  rounds  Round[]
+}
+
+model Player {
+  id       String     @id @default(cuid())
+  user     User       @relation(fields: [userId], references: [id])
+  userId   String
+  room     Room       @relation(fields: [roomId], references: [id])
+  roomId   String
+  role     PlayerRole?
+  isActive Boolean    @default(true) // false = voted out
+  joinedAt DateTime   @default(now())
+
+  clues  Clue[]
+  votes  Vote[]       @relation("VoterPlayer")
+  votedBy Vote[]      @relation("TargetPlayer")
+
+  @@unique([userId, roomId])
+}
+
+model Round {
+  id          String      @id @default(cuid())
+  room        Room        @relation(fields: [roomId], references: [id])
+  roomId      String
+  roundNumber Int
+  wordPair    WordPair    @relation(fields: [wordPairId], references: [id])
+  wordPairId  String
+  phase       RoundPhase  @default(HINTING)
+  createdAt   DateTime    @default(now())
+  endedAt     DateTime?
+
+  clues Clue[]
+  votes Vote[]
+}
+
+model Clue {
+  id        String   @id @default(cuid())
+  round     Round    @relation(fields: [roundId], references: [id])
+  roundId   String
+  player    Player   @relation(fields: [playerId], references: [id])
+  playerId  String
+  content   String   // The clue text
+  createdAt DateTime @default(now())
+}
+
+model Vote {
+  id        String   @id @default(cuid())
+  round     Round    @relation(fields: [roundId], references: [id])
+  roundId   String
+  voter     Player   @relation("VoterPlayer", fields: [voterId], references: [id])
+  voterId   String
+  target    Player   @relation("TargetPlayer", fields: [targetId], references: [id])
+  targetId  String
+  createdAt DateTime @default(now())
+
+  @@unique([roundId, voterId]) // One vote per player per round
+}
+
+enum RoomStatus {
+  WAITING
+  IN_PROGRESS
+  FINISHED
+}
+
+enum PlayerRole {
+  CIVILIAN  // Dân
+  BLACK_HAT // Mũ đen
+  WHITE_HAT // Mũ trắng
+}
+
+enum RoundPhase {
+  HINTING  // Players giving clues
+  VOTING   // Vote to eliminate
+  GUESSING // White hat guesses after being eliminated
+  RESULT   // End of round result
+}
