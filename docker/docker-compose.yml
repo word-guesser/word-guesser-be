@@ -52,6 +52,8 @@ services:
     depends_on:
       - db
       - redis
+    networks:
+      - word-guesser
 
 volumes:
   pgdata:

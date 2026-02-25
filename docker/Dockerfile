@@ -8,6 +8,7 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 # Install dependencies
+RUN apk add --no-cache openssl libc6-compat
 RUN npm install
 
 # Copy source code
@@ -27,6 +28,8 @@ ENV NODE_ENV=production
 # Copy package files and install production dependencies only
 COPY package*.json ./
 COPY prisma ./prisma/
+COPY tsconfig.json ./
+RUN apk add --no-cache openssl libc6-compat
 RUN npm install --omit=dev
 
 # Copy compiled code and prisma client from builder
@@ -36,4 +39,7 @@ COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/clie
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

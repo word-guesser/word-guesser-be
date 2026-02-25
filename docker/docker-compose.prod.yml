@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:16
     restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -8,6 +8,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - word-guesser
 
   redis:
     image: redis:7-alpine
@@ -20,7 +22,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - aimind_network
+      - word-guesser
     command: redis-server --appendonly yes
 
 
@@ -43,6 +45,8 @@ services:
     depends_on:
       - db
       - redis
+    networks:
+      - word-guesser
 
   frontend:
     image: word-guesser-fe:latest
@@ -51,7 +55,14 @@ services:
       - "80:80"
     depends_on:
       - backend
+    networks:
+      - word-guesser
 
 volumes:
   pgdata:
   redis_data:
+
+networks:
+  word-guesser:
+    driver: bridge
+
