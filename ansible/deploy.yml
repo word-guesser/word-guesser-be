@@ -1,0 +1,158 @@
+---
+- name: Deploy Word Guesser Application
+  hosts: production
+  become: true
+  vars_files:
+    - group_vars/all.yml
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required system packages
+      apt:
+        pkg:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - python3-pip
+          - virtualenv
+          - python3-setuptools
+          - nginx
+          - certbot
+          - python3-certbot-nginx
+        state: present
+
+    - name: Add Docker GPG apt Key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker Repository
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu focal stable
+        state: present
+
+    - name: Install Docker Engine
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+
+    - name: Ensure Docker service is running
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Create project directory
+      file:
+        path: "{{ project_root }}"
+        state: directory
+        mode: '0755'
+
+    - name: Debug variables
+      debug:
+        msg: "Registry: ghcr.io, User: {{ gh_username }}"
+
+    - name: Log in to GitHub Container Registry
+      docker_login:
+        registry_url: ghcr.io
+        username: "{{ gh_username }}"
+        password: "{{ gh_token }}"
+      when: gh_token != "your_github_pat_token"
+
+    - name: Copy backend.env file
+      template:
+        src: templates/backend.env.j2
+        dest: "{{ project_root }}/backend.env"
+        mode: '0600'
+
+    - name: Copy frontend.env file
+      template:
+        src: templates/frontend.env.j2
+        dest: "{{ project_root }}/frontend.env"
+        mode: '0600'
+
+    - name: Copy docker-compose.yml
+      template:
+        src: templates/docker-compose.yml.j2
+        dest: "{{ project_root }}/docker-compose.yml"
+        mode: '0644'
+
+    - name: Pull Database and Redis from Docker Hub
+      community.docker.docker_image:
+        name: "{{ item }}"
+        source: pull
+      loop:
+        - "postgres:16"
+        - "redis:7-alpine"
+
+    - name: Pull App images from GHCR
+      community.docker.docker_image:
+        name: "{{ item }}"
+        source: pull
+      loop:
+        - "{{ backend_image }}"
+        - "{{ frontend_image }}"
+      when: gh_token != "your_github_pat_token"
+      register: app_pull_result
+      ignore_errors: true
+
+    - name: Fail if App images could not be pulled
+      fail:
+        msg: "Images not found in GHCR. Did you push them with the 'latest' tag? Check your GitHub Actions status."
+      when: 
+        - app_pull_result is failed
+        - gh_token != "your_github_pat_token"
+
+    - name: Start Docker Compose services
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_root }}"
+        state: present
+
+    - name: Check if SSL certificate exists
+      stat:
+        path: "/etc/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+      register: ssl_cert
+
+    - name: Generate SSL certificate (Standalone for first time)
+      command: >
+        certbot certonly --nginx
+        --non-interactive
+        --agree-tos
+        --email {{ certbot_email }}
+        -d {{ domain_name }}
+      when: not ssl_cert.stat.exists and domain_name != "yourdomain.com"
+      notify: Reload Nginx
+
+    - name: Copy Nginx configuration
+      template:
+        src: templates/nginx.conf.j2
+        dest: "/etc/nginx/sites-available/{{ project_name }}"
+      notify: Reload Nginx
+
+    - name: Enable Nginx configuration
+      file:
+        src: "/etc/nginx/sites-available/{{ project_name }}"
+        dest: "/etc/nginx/sites-enabled/{{ project_name }}"
+        state: link
+      notify: Reload Nginx
+
+    - name: Remove default Nginx site
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Reload Nginx
+
+  handlers:
+    - name: Reload Nginx
+      service:
+        name: nginx
+        state: reloaded

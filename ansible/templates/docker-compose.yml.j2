@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: {{ postgres_user }}
+      POSTGRES_PASSWORD: {{ postgres_password }}
+      POSTGRES_DB: {{ postgres_db }}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - word-guesser
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - word-guesser
+    command: redis-server --appendonly yes
+
+  backend:
+    image: {{ backend_image }}
+    restart: always
+    env_file:
+      - backend.env
+    environment:
+      DATABASE_URL: postgresql://{{ postgres_user }}:{{ postgres_password }}@db:5432/{{ postgres_db }}?schema=public
+      REDIS_URL: redis://redis:6379
+    networks:
+      - word-guesser
+
+  frontend:
+    image: {{ frontend_image }}
+    restart: always
+    ports:
+      - "8080:80"
+    env_file:
+      - frontend.env
+    depends_on:
+      - backend
+    networks:
+      - word-guesser
+
+volumes:
+  pgdata:
+  redis_data:
+
+networks:
+  word-guesser:
+    driver: bridge

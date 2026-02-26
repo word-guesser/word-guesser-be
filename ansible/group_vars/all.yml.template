@@ -1,0 +1,32 @@
+---
+project_name: word-guesser
+project_root: "/opt/{{ project_name }}"
+
+# GitHub Container Registry details
+gh_username: your_github_username
+gh_token: your_github_pat_token
+
+backend_image: "ghcr.io/{{ gh_username }}/word-guesser:latest"
+frontend_image: "ghcr.io/{{ gh_username }}/word-guesser-fe:latest"
+
+# Domain and SSL
+domain_name: yourdomain.com
+certbot_email: your-email@example.com
+
+# Database (Production values - override these!)
+postgres_user: postgres
+postgres_password: super_secure_password
+postgres_db: word_guesser
+
+# App Secrets
+jwt_secret: some_random_long_secret
+session_secret: another_random_long_secret
+gemini_api_key: your_gemini_key
+
+# OAuth
+google_client_id: your_client_id
+google_client_secret: your_client_secret
+google_callback_url: "https://{{ domain_name }}/api/auth/google/callback"
+
+# Client URL
+client_url: "https://{{ domain_name }}"
